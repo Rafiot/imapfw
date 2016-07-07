@@ -1,0 +1,73 @@
+#
+# Used by rafiot for development purposes (message hooks)
+#
+
+from imapfw.api import types, shells
+import glob
+from io import BytesIO
+import os
+from kittengroomer_email import KittenGroomerMail
+
+UI = None
+
+MainConf = {
+    # The number of concurrent workers for the accounts. Default is the number
+    # of accounts to sync.
+    'max_sync_accounts': 2,
+}
+
+
+def configure(ui):
+    global UI
+    UI = ui
+
+
+def preHook(hook, actionName, actionOptions):
+    hook.ended()
+
+
+def postHook(hook):
+    hook.ended()
+
+
+def exceptionHook(hook, error):
+    hook.ended()
+
+
+def load_messages(path):
+    msgs = []
+    for f in glob.glob(os.path.join(path, '*')):
+        msgs.append(BytesIO(open(f, 'rb').read()))
+    return msgs
+
+
+# To work on messages.
+class MShell(shells.Shell):
+    def beforeSession(self):
+        i = 0
+        ms = []
+        for msg in load_messages('testdir'):
+            m = types.message.Message(i)
+            m.setFd(msg)
+            ms.append(m)
+            i += 1
+        self.messages = types.message.Messages(*ms)
+        self.sanitize()
+
+        self.register('messages')
+
+    def session(self):
+        self.interactive()
+
+    def sanitize(self):
+        self.msg_out = types.message.Messages()
+        for i, msg in self.messages.items():
+            kg = KittenGroomerMail(msg.getFd().read())
+            clean = kg.process_mail()
+
+            m = types.message.Message(i)
+            m.setFd(BytesIO(clean.as_bytes()))
+            self.msg_out.add(m)
+        self.register('msg_out')
+
+# vim: syntax=python ts=4 expandtab :
